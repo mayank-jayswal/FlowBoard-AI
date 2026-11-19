@@ -1,8 +1,10 @@
 import { useState, useMemo } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Sparkles, FileText, Users, Activity, Search, ChevronLeft } from "lucide-react";
+import { Sparkles, FileText, Users, Activity, Search, ChevronLeft, Settings2 } from "lucide-react";
 import { useBoard } from "../hooks/useBoard";
+import { useBoards } from "../context/BoardsContext";
+import { useAuth } from "../context/AuthContext";
 import { useLayout } from "../components/layout/AppLayout";
 import { aiApi } from "../lib/api";
 import { PRIORITIES } from "../lib/utils";
@@ -16,13 +18,17 @@ import PromptDialog from "../components/ui/PromptDialog";
 import KanbanBoard from "../components/board/KanbanBoard";
 import TaskModal from "../components/board/TaskModal";
 import MembersModal from "../components/board/MembersModal";
+import EditBoardModal from "../components/board/EditBoardModal";
 import AIGenerateModal from "../components/ai/AIGenerateModal";
 import AISummaryModal from "../components/ai/AISummaryModal";
 import ActivityFeed from "../components/ActivityFeed";
 
 const BoardPage = () => {
   const { boardId } = useParams();
+  const navigate = useNavigate();
   const { openCreateBoard } = useLayout();
+  const { user } = useAuth();
+  const { update: updateBoardInList, remove: removeBoardFromList } = useBoards();
   const b = useBoard(boardId);
 
   const [taskModal, setTaskModal] = useState({ open: false, task: null, columnId: null });
@@ -31,6 +37,7 @@ const BoardPage = () => {
   const [membersOpen, setMembersOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [addColumnOpen, setAddColumnOpen] = useState(false);
+  const [editBoardOpen, setEditBoardOpen] = useState(false);
 
   const [filterPriority, setFilterPriority] = useState("");
   const [filterAssignee, setFilterAssignee] = useState("");
@@ -92,6 +99,11 @@ const BoardPage = () => {
       <Button size="sm" variant="ghost" onClick={() => setMembersOpen(true)} title="Members">
         <Users className="h-4 w-4" />
       </Button>
+      {(b.role === "owner" || b.board?.owner_id === user?.id) && (
+        <Button size="sm" variant="ghost" onClick={() => setEditBoardOpen(true)} title="Board settings">
+          <Settings2 className="h-4 w-4" />
+        </Button>
+      )}
       <Button size="sm" variant="outline" onClick={() => setSummaryOpen(true)}>
         <FileText className="h-4 w-4" /> <span className="hidden lg:inline">Summary</span>
       </Button>
@@ -205,6 +217,21 @@ const BoardPage = () => {
         ownerId={b.board?.owner_id}
       />
       <ActivityFeed open={activityOpen} onClose={() => setActivityOpen(false)} boardId={boardId} />
+      <EditBoardModal
+        open={editBoardOpen}
+        onClose={() => setEditBoardOpen(false)}
+        board={b.board}
+        isOwner={b.role === "owner" || b.board?.owner_id === user?.id}
+        onUpdate={async (data) => {
+          const updated = await b.updateBoard(data);
+          updateBoardInList(boardId, updated);
+        }}
+        onDelete={async () => {
+          await b.deleteBoard();
+          removeBoardFromList(boardId);
+          navigate("/dashboard");
+        }}
+      />
       <PromptDialog
         open={addColumnOpen}
         onClose={() => setAddColumnOpen(false)}

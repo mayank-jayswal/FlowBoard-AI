@@ -202,10 +202,39 @@ export const useBoard = (boardId) => {
     [boardId]
   );
 
+  const updateBoard = useCallback(
+    async (data) => {
+      try {
+        const updated = await boardApi.update(boardId, data);
+        setBoard((prev) => ({ ...prev, ...updated }));
+        toast.success("Board updated");
+        return updated;
+      } catch (err) {
+        toast.error(err.message);
+        throw err;
+      }
+    },
+    [boardId]
+  );
+
+  const deleteBoard = useCallback(
+    async () => {
+      try {
+        await boardApi.remove(boardId);
+        toast.success("Board deleted");
+      } catch (err) {
+        toast.error(err.message);
+        throw err;
+      }
+    },
+    [boardId]
+  );
+
   return {
     board, columns, tasks, members, role, loading, error, presence,
     setBoard, setMembers,
     createTask, updateTask, deleteTask, moveTask, upsertTask,
     addColumn, renameColumn, deleteColumn,
+    updateBoard, deleteBoard,
   };
 };

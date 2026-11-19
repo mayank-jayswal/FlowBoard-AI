@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -14,19 +14,22 @@ import {
   FolderKanban,
   Crown,
   Share2,
+  Settings2,
 } from "lucide-react";
 import { useBoards } from "../context/BoardsContext";
 import { useAuth } from "../context/AuthContext";
 import { useLayout } from "../components/layout/AppLayout";
 import Topbar from "../components/layout/Topbar";
 import Button from "../components/ui/Button";
+import EditBoardModal from "../components/board/EditBoardModal";
 import { BoardCardSkeleton } from "../components/ui/Skeleton";
 import { cn, relativeTime } from "../lib/utils";
 
 const Dashboard = () => {
-  const { boards, loading } = useBoards();
+  const { boards, loading, update, remove } = useBoards();
   const { user } = useAuth();
   const { openCreateBoard } = useLayout();
+  const [editingBoard, setEditingBoard] = useState(null);
 
   const isOwner = (b) =>
     Boolean(b.is_owner ?? (b.owner_id === user?.id || b.role === "owner"));
@@ -206,13 +209,27 @@ const Dashboard = () => {
                       >
                         <LayoutGrid className="h-5 w-5" />
                       </div>
-                      <span className="flex items-center gap-1.5 text-faint transition-all duration-200 group-hover:text-brand-500">
+                      <span className="flex items-center gap-1.5 text-faint transition-all duration-200">
+                        {isOwner(b) && (
+                          <button
+                            type="button"
+                            title="Board settings"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setEditingBoard(b);
+                            }}
+                            className="rounded-lg p-1 text-faint transition-colors hover:bg-surface-2 hover:text-ink"
+                          >
+                            <Settings2 className="h-4 w-4" />
+                          </button>
+                        )}
                         {!isOwner(b) && (
                           <span className="rounded-full bg-surface-2 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
                             Shared
                           </span>
                         )}
-                        <ArrowUpRight className="h-4 w-4 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                        <ArrowUpRight className="h-4 w-4 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-brand-500" />
                       </span>
                     </div>
                     <h4 className="font-display text-base font-semibold tracking-tight transition-colors group-hover:text-brand-600">
@@ -240,6 +257,21 @@ const Dashboard = () => {
           )}
         </div>
       </div>
+
+      {editingBoard && (
+        <EditBoardModal
+          open={Boolean(editingBoard)}
+          onClose={() => setEditingBoard(null)}
+          board={editingBoard}
+          isOwner={isOwner(editingBoard)}
+          onUpdate={async (data) => {
+            await update(editingBoard.id, data);
+          }}
+          onDelete={async () => {
+            await remove(editingBoard.id);
+          }}
+        />
+      )}
     </>
   );
 };
