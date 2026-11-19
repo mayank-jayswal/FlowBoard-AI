@@ -1,0 +1,141 @@
+// Prisma schema for FlowBoard AI
+// DB: PostgreSQL hosted on Neon
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────
+model User {
+  id         String   @id @default(cuid())
+  name       String
+  email      String   @unique
+  password   String
+  avatar_url String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  ownedBoards  Board[]       @relation("BoardOwner")
+  memberships  BoardMember[]
+  assignedTasks Task[]       @relation("TaskAssignee")
+  createdTasks  Task[]       @relation("TaskCreator")
+  activities   Activity[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// BOARDS
+// ─────────────────────────────────────────────
+model Board {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  color       String   @default("#2f8159")
+  owner_id    String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  // Relations
+  owner      User          @relation("BoardOwner", fields: [owner_id], references: [id], onDelete: Cascade)
+  members    BoardMember[]
+  columns    Column[]
+  tasks      Task[]
+  activities Activity[]
+
+  @@map("boards")
+}
+
+enum MemberRole {
+  owner
+  admin
+  member
+}
+
+model BoardMember {
+  id         String     @id @default(cuid())
+  board_id   String
+  user_id    String
+  role       MemberRole @default(member)
+  joined_at  DateTime   @default(now())
+
+  board Board @relation(fields: [board_id], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([board_id, user_id])
+  @@map("board_members")
+}
+
+// ─────────────────────────────────────────────
+// COLUMNS
+// ─────────────────────────────────────────────
+model Column {
+  id         String   @id @default(cuid())
+  board_id   String
+  title      String
+  position   Float    @default(1000)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  board Board  @relation(fields: [board_id], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@map("columns")
+}
+
+// ─────────────────────────────────────────────
+// TASKS
+// ─────────────────────────────────────────────
+enum Priority {
+  low
+  medium
+  high
+  urgent
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  board_id    String
+  column_id   String
+  title       String
+  description String?
+  priority    Priority  @default(medium)
+  due_date    DateTime?
+  position    Float     @default(1000)
+  assignee_id String?
+  created_by  String
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  board    Board   @relation(fields: [board_id], references: [id], onDelete: Cascade)
+  column   Column  @relation(fields: [column_id], references: [id], onDelete: Cascade)
+  assignee User?   @relation("TaskAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
+  creator  User    @relation("TaskCreator", fields: [created_by], references: [id])
+
+  @@map("tasks")
+}
+
+// ─────────────────────────────────────────────
+// ACTIVITY LOG
+// ─────────────────────────────────────────────
+model Activity {
+  id         String   @id @default(cuid())
+  board_id   String
+  user_id    String
+  action     String   // task.created | task.moved | task.updated | task.deleted | member.added | member.removed | column.created
+  message    String
+  created_at DateTime @default(now())
+
+  board Board @relation(fields: [board_id], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("activities")
+}
+
