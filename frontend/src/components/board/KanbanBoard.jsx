@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -6,21 +6,12 @@ import {
   useSensor,
   useSensors,
   closestCorners,
+  pointerWithin,
 } from "@dnd-kit/core";
+import { arrayMove } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
 import Column from "./Column";
 import TaskCard from "./TaskCard";
-
-// Compute a fractional position so a task lands at `index` within `siblings`
-// (siblings must already exclude the task being moved, sorted by position).
-const positionForIndex = (siblings, index) => {
-  const prev = index > 0 ? siblings[index - 1]?.position : null;
-  const next = index < siblings.length ? siblings[index]?.position : null;
-  if (prev == null && next == null) return 1000;
-  if (prev == null) return next / 2;
-  if (next == null) return prev + 1000;
-  return (prev + next) / 2;
-};
 
 const KanbanBoard = ({ columns, tasks, actions, onTaskClick, onAddTask, onAiGenerate, onAddColumn }) => {
   const [activeTask, setActiveTask] = useState(null);
@@ -37,13 +28,24 @@ const KanbanBoard = ({ columns, tasks, actions, onTaskClick, onAddTask, onAiGene
     return map;
   }, [columns, tasks]);
 
+  // Prioritize task cards over parent column when pointer intersects
+  const customCollisionDetection = useCallback((args) => {
+    const pointerCollisions = pointerWithin(args);
+    const collisions = pointerCollisions.length > 0 ? pointerCollisions : closestCorners(args);
+    const taskCollision = collisions.find(
+      (c) => c.data?.droppableContainer?.data?.current?.type === "task"
+    );
+    if (taskCollision) return [taskCollision];
+    return collisions;
+  }, []);
+
   const onDragStart = ({ active }) => {
     setActiveTask(tasks.find((t) => t.id === active.id) || null);
   };
 
   const onDragEnd = ({ active, over }) => {
     setActiveTask(null);
-    if (!over) return;
+    if (!over || active.id === over.id) return;
 
     const activeId = active.id;
     const activeTaskObj = tasks.find((t) => t.id === activeId);
@@ -56,33 +58,74 @@ const KanbanBoard = ({ columns, tasks, actions, onTaskClick, onAddTask, onAiGene
     else if (overData?.type === "task") targetColumnId = overData.task.column_id;
     else targetColumnId = activeTaskObj.column_id;
 
-    const siblings = (tasksByColumn[targetColumnId] || []).filter((t) => t.id !== activeId);
+    const isSameColumn = activeTaskObj.column_id === targetColumnId;
 
-    let index;
-    if (overData?.type === "task") {
-      const overIndex = siblings.findIndex((t) => t.id === over.id);
-      index = overIndex === -1 ? siblings.length : overIndex;
+    if (isSameColumn) {
+      // In same column, dropping on empty column padding/gap should not move the task to the end
+      if (overData?.type === "column") return;
+
+      const colTasks = tasksByColumn[targetColumnId] || [];
+      const oldIndex = colTasks.findIndex((t) => t.id === activeId);
+      const overIndex = colTasks.findIndex((t) => t.id === over.id);
+
+      if (oldIndex === -1 || overIndex === -1 || oldIndex === overIndex) return;
+
+      const newTasks = arrayMove(colTasks, oldIndex, overIndex);
+      let newPosition;
+
+      if (overIndex === 0) {
+        const nextPos = newTasks[1]?.position;
+        newPosition = nextPos != null ? nextPos / 2 : 1000;
+      } else if (overIndex === newTasks.length - 1) {
+        const prevPos = newTasks[newTasks.length - 2]?.position;
+        newPosition = prevPos != null ? prevPos + 1000 : 1000;
+      } else {
+        const prevPos = newTasks[overIndex - 1]?.position;
+        const nextPos = newTasks[overIndex + 1]?.position;
+        newPosition = (prevPos + nextPos) / 2;
+      }
+
+      if (activeTaskObj.position === newPosition) return;
+      actions.moveTask(activeId, targetColumnId, newPosition);
     } else {
-      index = siblings.length; // dropped on empty column area
+      // Moving to a different column
+      const destTasks = tasksByColumn[targetColumnId] || [];
+      let newPosition;
+
+      if (overData?.type === "task") {
+        const overIndex = destTasks.findIndex((t) => t.id === over.id);
+        if (overIndex === -1) {
+          const lastPos = destTasks[destTasks.length - 1]?.position;
+          newPosition = lastPos != null ? lastPos + 1000 : 1000;
+        } else {
+          const newTasks = [
+            ...destTasks.slice(0, overIndex),
+            activeTaskObj,
+            ...destTasks.slice(overIndex),
+          ];
+          if (overIndex === 0) {
+            const nextPos = newTasks[1]?.position;
+            newPosition = nextPos != null ? nextPos / 2 : 1000;
+          } else {
+            const prevPos = newTasks[overIndex - 1]?.position;
+            const nextPos = newTasks[overIndex + 1]?.position;
+            newPosition = nextPos != null ? (prevPos + nextPos) / 2 : prevPos + 1000;
+          }
+        }
+      } else {
+        // Dropped on empty column
+        const lastPos = destTasks[destTasks.length - 1]?.position;
+        newPosition = lastPos != null ? lastPos + 1000 : 1000;
+      }
+
+      actions.moveTask(activeId, targetColumnId, newPosition);
     }
-
-    const newPosition = positionForIndex(siblings, index);
-
-    // No-op guard
-    if (
-      activeTaskObj.column_id === targetColumnId &&
-      activeTaskObj.position === newPosition
-    ) {
-      return;
-    }
-
-    actions.moveTask(activeId, targetColumnId, newPosition);
   };
 
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={customCollisionDetection}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragCancel={() => setActiveTask(null)}
