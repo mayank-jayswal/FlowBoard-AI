@@ -17,13 +17,25 @@ import jwt from "jsonwebtoken";
 // ─── Express app ─────────────────────────────────────────────────────────────
 const app = express();
 
-app.use(helmet());
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    credentials: true,
-  })
-);
+const clientOrigin = (process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "");
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (
+      origin === clientOrigin ||
+      origin.endsWith(".vercel.app") ||
+      origin.includes("localhost")
+    ) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+};
+
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Attach io to every request so route handlers can emit
@@ -53,10 +65,7 @@ app.use((err, _req, res, _next) => {
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
-  cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    credentials: true,
-  },
+  cors: corsOptions,
 });
 
 app.set("io", io);
