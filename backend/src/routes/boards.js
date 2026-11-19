@@ -72,10 +72,28 @@ const logActivity = async (io, { boardId, userId, action, message }) => {
 router.get("/", authenticate, async (req, res) => {
   const memberships = await prisma.boardMember.findMany({
     where: { user_id: req.user.id },
-    include: { board: true },
+    include: {
+      board: {
+        include: {
+          _count: {
+            select: {
+              tasks: true,
+              members: true,
+            },
+          },
+        },
+      },
+    },
     orderBy: { board: { updated_at: "desc" } },
   });
-  const boards = memberships.map((m) => m.board);
+  const boards = memberships.map((m) => ({
+    ...m.board,
+    role: m.role,
+    is_owner: m.role === "owner" || m.board.owner_id === req.user.id,
+    task_count: m.board._count.tasks,
+    member_count: m.board._count.members,
+    _count: undefined,
+  }));
   return res.json({ boards });
 });
 
@@ -100,7 +118,15 @@ router.post("/", authenticate, async (req, res) => {
     return b;
   });
 
-  return res.status(201).json({ board });
+  const payload = {
+    ...board,
+    role: "owner",
+    is_owner: true,
+    task_count: 0,
+    member_count: 1,
+  };
+
+  return res.status(201).json({ board: payload });
 });
 
 // GET /api/boards/:id

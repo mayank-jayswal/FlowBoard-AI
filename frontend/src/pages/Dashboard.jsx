@@ -28,15 +28,18 @@ const Dashboard = () => {
   const { user } = useAuth();
   const { openCreateBoard } = useLayout();
 
+  const isOwner = (b) =>
+    Boolean(b.is_owner ?? (b.owner_id === user?.id || b.role === "owner"));
+
   const stats = useMemo(() => {
     const totalTasks = boards.reduce(
       (sum, b) => sum + Number(b.task_count || 0),
       0,
     );
-    const owned = boards.filter((b) => b.is_owner).length;
-    const shared = boards.filter((b) => !b.is_owner).length;
+    const owned = boards.filter(isOwner).length;
+    const shared = boards.filter((b) => !isOwner(b)).length;
     return { total: boards.length, totalTasks, owned, shared };
-  }, [boards]);
+  }, [boards, user]);
 
   const topBoards = useMemo(
     () =>
@@ -60,13 +63,13 @@ const Dashboard = () => {
       boards: sizes,
       tasks: [...sizes].sort((a, b) => b - a),
       owned: boards
-        .filter((b) => b.is_owner)
+        .filter(isOwner)
         .map((b) => Number(b.task_count || 0)),
       shared: boards
-        .filter((b) => !b.is_owner)
+        .filter((b) => !isOwner(b))
         .map((b) => Number(b.task_count || 0)),
     };
-  }, [boards]);
+  }, [boards, user]);
 
   const recentBoards = useMemo(
     () =>
@@ -204,7 +207,7 @@ const Dashboard = () => {
                         <LayoutGrid className="h-5 w-5" />
                       </div>
                       <span className="flex items-center gap-1.5 text-faint transition-all duration-200 group-hover:text-brand-500">
-                        {!b.is_owner && (
+                        {!isOwner(b) && (
                           <span className="rounded-full bg-surface-2 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
                             Shared
                           </span>
